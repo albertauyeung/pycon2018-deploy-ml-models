@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Using Gradient Boosting Machines in Python | PyCon HK 2017</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Source Sans Pro'; }
+      h1, h2, h3 {
+        font-family: 'Source Sans Pro';
+        font-weight: normal;
+      }
+      .remark-slide-content h1 {
+        color: #3344AA;
+        font-size: 2.4em;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+
+      .remark-slide table {
+          margin-left: 20px;
+      }
+      .remark-slide table th {
+          font-size: 1.4em;
+          text-align: center;
+          padding: 2px 16px;
+          background-color: #EFEFEF;
+      }
+      .remark-slide table td {
+          font-size: 1.4em;
+          text-align: center;
+          padding: 2px 16px;
+      }
+
+      li {
+          font-size: 1.5em;
+          line-height: 1.4em;
+          margin-bottom: 0.5em;
+      }
+      li li {
+          font-size: 0.8em;
+          line-height: 1.4em;
+      }
+
+      a {
+          text-decoration: none;
+          color: #CC5577;
+      }
+      a:hover {
+          text-decoration: underline;
+      }
+
+      .split-60 .column-left {
+           display: block;
+           float: left;
+           width: 60%;
+      }
+      .split-60 .column-right {
+           display: block;
+           float: right;
+           width: 35%;
+           padding-left: 12px;
+      }
+
+      .remark-code {
+        font-size: 1.1em;
+        line-height: 1.35em;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# Using Gradient Boosting Machines in Python
+
+### Albert Au Yeung
+
+### PyCon HK 2017, 4th Nov., 2017
+
+---
+
+# Objectives of this Talk
+
+* To give a brief introduction of [gradient boosting](https://en.wikipedia.org/wiki/Gradient_boosting)
+* To introduce how to use [LightGBM](https://github.com/Microsoft/LightGBM) in Python
+* To share some tips on [tuning LightGBM models](https://github.com/Microsoft/LightGBM/blob/master/docs/Parameters-Tuning.rst)
+
+---
+
+# What is Machine Learning?
+
+* Given some input `\(X\)` and ouptut `\(y\)`, find a function `\(F(X)\)` that maps `\(X\)` to `\(y\)`.
+* Example: given (<span style="color:#CC4455">location, size</span>) (`\(X\)`), predict the <span style="color:#CC4455">price</span> of a house (`\(y\)`).
+
+.center[<img src="img/ml.png" style="width: 75%; margin-top: 2em;" />]
+
+---
+
+# Which ML Algorithm Should You Use?
+
+- Linear regression, decision trees, random forest, gradient boosting, logistic regression, kNN, naive Bayes, neural networks...
+- For *computer vision* related tasks, *deep learning* are often the most useful. How about other problems with **<span style="color:#3366AA">explicit features</span>**?
+      - E.g: [House Price Prediction](https://www.kaggle.com/c/house-prices-advanced-regression-techniques), [Insurance Claim Prediction](https://www.kaggle.com/c/porto-seguro-safe-driver-prediction), [Production Line Quality Prediction](Production Line)
+- What do the competition winners use?
+      - [Profiling Top Kagglers: Owen Zhang](http://blog.kaggle.com/2015/06/22/profiling-top-kagglers-owen-zhang-currently-1-in-the-world/)
+      - [A Kaggle Master Explains Gradient Boosting](http://blog.kaggle.com/2017/01/23/a-kaggle-master-explains-gradient-boosting/)
+
+---
+
+class: center, middle
+
+<img src="img/algorithms-ranking.png" style="width: 95%" />
+
+Ref: Fig 1. Olson et al. [Data-driven Advice for Applying Machine Learning to Bioinformatics Problems](https://arxiv.org/abs/1708.05070). 2017.
+
+---
+
+class: center, middle
+
+<img src="img/algorithms-ranking-2.png" style="width: 80%" />
+
+Ref: Fig 2. Olson et al. [Data-driven Advice for Applying Machine Learning to Bioinformatics Problems](https://arxiv.org/abs/1708.05070). 2017.
+
+---
+
+class: split-60
+
+# What is Boosting?
+
+.column-left[
+* In general, [boosting](https://en.wikipedia.org/wiki/Boosting_%28machine_learning%29) is a method that trains a number of relatively **weak** classifiers and **combine** their predictions together, in the hope of generating more accuracy predictions
+* Thus, boosting implies [ensemble learning](https://en.wikipedia.org/wiki/Ensemble_learning)
+* Example: [AdaBoost](https://en.wikipedia.org/wiki/AdaBoost) - in each iteration, previously <span style="color: #4466DD">wrongly</span> classified samples will have <span style="color: #4466DD">higher weights</span> when training the next classifier.
+]
+.column-right[
+<img src="img/boosting.png" width="98%">
+
+(Ref: [Quick Introduction to Boosting Algorithms in Machine Learning](https://www.analyticsvidhya.com/blog/2015/11/quick-introduction-boosting-algorithms-machine-learning/))
+]
+
+---
+
+# What is Gradient Boosting?
+
+* To train a model is equivalent to finding a suitable function `\(F(X)\)`, such that given input data `\(X\)`, it will output correct predictions `\(y = F(X)\)`
+* Let's assume that we have trained a model `\(F_1(X)\)`, and given training data `\(X_T\)`, it outputs `\(y_p\)`, while the ground truth is `\(y_T\)`
+* In most cases, the model would make some mistakes: `\(y_T - y_p\)`
+* What can we do next to **<span style="color: rgb(22, 113, 155)">improve</span>** our model?
+
+---
+
+# An Example
+
+* Suppose the performance of our first model is as follows:
+
+Rooms  | Size |        Rent | Predicted (`\(F_1(X)\)`) | Error (`\(y_T\)` - `\(F_1(X)\)`)
+-------|------|-------------|-----------|-------
+1      |   20 |      12,000 |   13,000  | -1,000
+1      |   30 |      14,000 |   13,500  |    500
+2      |   40 |      16,500 |   15,800  |    700
+3      |   85 |      24,000 |   25,500  | -1,500
+3      |   80 |      26,000 |   25,300  |    700
+
+* We would like to have another model that **corrects** the errors of the first model!
+* In other words, we want `\(F_2(X)\)` = `\(y_T\)` - `\(F_1(X)\)`
+
+---
+
+# What is Gradient Boosting?
+
+* The combination of the 1st and the 2nd model may still make some mistakes
+* We can apply this method repeatedly, until `\(F_1(X) + F_2(X) + ... + F_N(X)\)` is good enough
+* In general, larger `\(N\)` results in more accuracy results, but may also lead to **<span style="color: #CC7733">overfitting</span>**.
+* `\(N\)` is usually referred to as <span style="color: rgb(190, 16, 124)">*number of boosted rounds*</span>, <span style="color: rgb(190, 16, 124)">*number of estimators*</span> or <span style="color: rgb(190, 16, 124)">*number of iterations*</span>.
+
+---
+
+# Training Gradient Boosting Models
+
+## A number of libraries available in Python
+
+* scikit-learn's [GradientBoostingClassifier](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html#sklearn.ensemble.GradientBoostingClassifier) / [GradientBoostingRegressor](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html#sklearn.ensemble.GradientBoostingRegressor)
+* [XGBoost](http://xgboost.readthedocs.io/en/latest/)
+* Microsoft's [LightGBM](https://github.com/Microsoft/LightGBM)
+* [h2o](https://github.com/h2oai/h2o-3)
+* Spark MLib's [Gradient-Boosted Trees](https://spark.apache.org/docs/2.1.0/ml-classification-regression.html#gradient-boosted-trees-gbts)
+
+---
+
+# Comparison between LightGBM and XGBoost
+
+* XGBoost has been very popular among Kaggle participants
+* However, LightGBM trains model with similar accuracy much faster
+
+Dataset  | xgboost  | xgboost_hist | LightGBM
+---------|----------|--------------|----------
+Higgs 	 |  3,794 s | 	 551 s 	   |  238 s
+Yahoo LTR| 	  674 s | 	 265 s 	   |  150 s
+MS LTR 	 |  1,251 s | 	 385 s     |  215 s
+Expo 	 |  1,607 s |    588 s 	   |  138 s
+Allstate | 	2,867 s |  1,355 s 	   |  348 s
+
+* More statistics and comparison can be found at [LightGBM's Experiments page](https://github.com/Microsoft/LightGBM/blob/master/docs/Experiments.rst)
+
+---
+
+# LightGBM
+
+* LightGBM ([https://github.com/Microsoft/LightGBM](https://github.com/Microsoft/LightGBM)) - An open source gradient boosting framework created by Microsoft Research.
+* Supports *classification*, *regression* and *ranking* tasks
+* Much more efficient compared to other implements such as [XGboost](https://github.com/dmlc/xgboost) and [scikit-learn](http://scikit-learn.org/stable/modules/classes.html#module-sklearn.ensemble)
+* Support parallel training on **multi-core**, **multi-machine** and **GPUs**
+
+---
+
+# Python API Example
+
+```python
+import lightgbm as lgb
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+
+# Assume X, y are the training data set
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=101)
+
+# Create dataset for LightGBM
+lgb_train = lgb.Dataset(X_train, label=y_train)
+lgb_test = lgb.Dataset(X_test, y_test, reference=lgb_train)
+
+# Set parameters
+params = {
+    "objective": "multiclass",
+    "metric": "multi_logloss",
+    "num_leaves": 31
+}
+```
+
+---
+
+# Python API Example
+
+```python
+# Train
+booster = lgb.train(params,
+                    lgb_train,
+                    num_boost_round=100,
+                    valid_sets=[lgb_train, lgb_test],
+                    early_stopping_rounds=10)
+
+# Check performance on test set
+y_pred = booster.predict(X_test, num_iteration=booster.best_iteration)
+print("Accuracy: %.4f" % accuracy_score(y_test, y_pred))
+
+# Persist model
+booster.save_model("gbm.model.txt")
+```
+
+---
+# scikit-learn Style API
+
+```python
+import lightgbm as lgb
+
+# Create classifier
+gbm = lgb.LGBMClassifier(objective="multiclass",
+                         num_leaves=31,
+                         n_estimators=100)
+
+# Train
+gbm.fit(X_train, y_train,
+        eval_set=[(X_test, y_test)],
+        eval_metric="multi_logloss",
+        early_stopping_rounds=5)
+
+# Generate predictions
+y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration_)
+```      
+---
+
+# LGB: Important Parameters
+
+* <span style="color: rgb(47, 151, 192)">**num_leaves**</span> - Maximum number of leaves in a tree. (10 to 100)
+* <span style="color: rgb(47, 151, 192)">**min_child_samples**</span> - Minimum data points required in a leaf node. (10 to 1000)
+* <span style="color: rgb(47, 151, 192)">**bagging_fraction**</span> - Fraction of samples for training in each round (0 to 1)
+* <span style="color: rgb(47, 151, 192)">**bagging_freq**</span> - How frequent do we use bagging (1 to 10)
+* <span style="color: rgb(47, 151, 192)">**feature_fraction**</span> - Fraction of features for training in each round (0 to 1)
+* <span style="color: rgb(47, 151, 192)">**lambda_l1** / **lambda_l2**</span> - Regularisation parameters (0.01 to 0.1)
+* <span style="color: rgb(47, 151, 192)">**min_split_gain**</span> - When should we split a leave node (0.001 to 0.1)
+
+<br/><br/>
+<span style="font-size: 1.2em">
+Reference: [LightGBM - Parameter Tuning](http://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.html)
+</span>
+
+---
+
+# Early Stopping
+
+* **Training error** decreases as number of boosting rounds increases
+* But too many boosting rounds may lead to **overfitting**
+* A **<span style="color: rgb(18, 145, 81)">validation data set</span>** can be used to find out the optimal number of boosting rounds
+
+```python
+evals_result = {}  # Use to store the metrics of each round on the validation set
+booster = lgb.train(params,
+                    lgb_train,
+                    num_boost_round=100,
+                    valid_sets=[lgb_train, lgb_test],
+                    evals_result=evals_result,
+                    early_stopping_rounds=10)
+```
+
+---
+
+# Early Stopping - Avoid Overfitting
+
+<center>
+<img src="img/best-iterations.png" width="95%">
+</center>
+
+---
+
+# Feature Importance
+
+* The **<span style="color: rgb(18, 145, 81)">importance</span>** of each feature can be checked after a model has been trained
+* Check both **`"split"`** and **`"gain"`** importance type to understand how useful is each feature
+
+```python
+# importance_type can be either "gain" (gain achieved by using the feature to split),
+# or "split" (number of times the feature is used to split)
+rank = zip(bst.feature_importance(importance_type="gain"), bst.feature_name())
+rank.sort(reverse=True)
+for score, f in rank[:50]:
+    print("%8.2f  %s" % (score, f))
+
+#  5265.03  ps_car_13
+#  2460.84  ps_ind_05_cat
+#  2427.37  ps_reg_03
+# ...
+```
+
+---
+
+<center>
+<img src="img/feature-importance.png" width="70%">
+</center>
+
+```python
+booster = lgb.train(params, train_data, num_boost_round=100)
+lgb.plot_importance(booster)
+```
+
+---
+
+# LGB: Parallelisation
+
+* LightGBM supports learning on <span style="color: #4466DD">multi-core</span>, <span style="color: #4466DD">multi-machine</span>, and <span style="color: #4466DD">GPU</span>
+* Check out documentation at [Parallel Learning Guide](https://github.com/Microsoft/LightGBM/blob/master/docs/Parallel-Learning-Guide.rst)
+* Method to install GPU-enabled LightGBM (worked on AWS GPU instance)<br/>
+(Ref: https://github.com/Microsoft/LightGBM/issues/715)
+
+```bash
+$ git clone --recursive https://github.com/Microsoft/LightGBM
+$ cd ./LightGBM
+$ mkdir build; cd build
+
+$ sudo cmake -DUSE_GPU=1 -DOpenCL_LIBRARY=/usr/local/cuda-8.0/lib64/libOpenCL.so \
+    -DOpenCL_INCLUDE_DIR=/usr/local/cuda-8.0/include/ ..
+$ sudo make -j2
+
+$ cd ../python-package; sudo python3 setup.py install --precompile
+```
+
+---
+
+# Other Tips
+
+* Use **randomised parameter search** instead of grid search is usually faster in discovering a good set of hyperparameters
+* Optimal hyperparameters largely depends on the **size and distribution** of the dataset, try a wider range of values in parameter search
+* **Combo features** are generally NOT necessary as decision trees can easily pick up combination of feature values
+
+---
+
+# References
+
+* Ben Gorman. [A Kaggle Master Explains Gradient Boosting](http://blog.kaggle.com/2017/01/23/a-kaggle-master-explains-gradient-boosting/). 2017
+* Cheng Li. [A Gentle Introduction to Graident Boosting](http://www.ccs.neu.edu/home/vip/teach/MLcourse/4_boosting/slides/gradient_boosting.pdf)
+* Tianqi Chen. [Introduction to Boosted Trees](https://homes.cs.washington.edu/~tqchen/pdf/BoostedTree.pdf)
+* Checko out the [FAQ Section](http://lightgbm.readthedocs.io/en/latest/FAQ.html) of the LightGBM documentation too!
+* [Laurae++ Interactive documentation](https://sites.google.com/view/lauraepp/parameters)
+
+---
+
+class: center, middle
+
+## Thank You!
+
+### http://www.albertauyeung.com<br/>albertauyeung@gmail.com
+
+### Slides Avaliable at:<br/> http://talks.albertauyeung.com/pycon2017-gradient-boosting/
+
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS_HTML&delayStartupUntil=configured" type="text/javascript"></script>
+    <script>
+      var slideshow = remark.create({
+        // Set the slideshow display ratio
+        ratio: '16:9',
+
+        // Customize slide number label, either using a format string..
+        slideNumberFormat: '%current% / %total%',
+        
+        // Enable or disable counting of incremental slides in the slide counting
+        countIncrementalSlides: true,
+
+        highlightStyle: "zenburn"
+        });
+      // Setup MathJax
+      MathJax.Hub.Config({
+          tex2jax: {
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+          }
+      });
+
+      MathJax.Hub.Configured();
+    </script>
+
+<script>
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-30554548-1', 'auto');
+	ga('send', 'pageview');
+</script>
+
+  </body>
+</html>
