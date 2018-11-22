@@ -1,406 +1,610 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Using Gradient Boosting Machines in Python | PyCon HK 2017</title>
+    <title>Deploying Machine Learning Models in Python | PyCon HK 2018</title>
     <meta charset="utf-8">
-    <style>
-      @import url(https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,400italic);
-      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
-
-      body { font-family: 'Source Sans Pro'; }
-      h1, h2, h3 {
-        font-family: 'Source Sans Pro';
-        font-weight: normal;
-      }
-      .remark-slide-content h1 {
-        color: #3344AA;
-        font-size: 2.4em;
-      }
-      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
-
-      .remark-slide table {
-          margin-left: 20px;
-      }
-      .remark-slide table th {
-          font-size: 1.4em;
-          text-align: center;
-          padding: 2px 16px;
-          background-color: #EFEFEF;
-      }
-      .remark-slide table td {
-          font-size: 1.4em;
-          text-align: center;
-          padding: 2px 16px;
-      }
-
-      li {
-          font-size: 1.5em;
-          line-height: 1.4em;
-          margin-bottom: 0.5em;
-      }
-      li li {
-          font-size: 0.8em;
-          line-height: 1.4em;
-      }
-
-      a {
-          text-decoration: none;
-          color: #CC5577;
-      }
-      a:hover {
-          text-decoration: underline;
-      }
-
-      .split-60 .column-left {
-           display: block;
-           float: left;
-           width: 60%;
-      }
-      .split-60 .column-right {
-           display: block;
-           float: right;
-           width: 35%;
-           padding-left: 12px;
-      }
-
-      .remark-code {
-        font-size: 1.1em;
-        line-height: 1.35em;
-      }
-    </style>
+    <link rel='stylesheet' href='style.css' type='text/css' media='all' />
   </head>
   <body>
     <textarea id="source">
 
 class: center, middle
 
-# Using Gradient Boosting Machines in Python
+# Deploying Machine Learning Models<br/>in Python
+<br/><br/>
 
 ### Albert Au Yeung
 
-### PyCon HK 2017, 4th Nov., 2017
+#### PyCon HK 2018<br/>23th November, 2018
 
 ---
 
-# Objectives of this Talk
+# What is this Talk About?
 
-* To give a brief introduction of [gradient boosting](https://en.wikipedia.org/wiki/Gradient_boosting)
-* To introduce how to use [LightGBM](https://github.com/Microsoft/LightGBM) in Python
-* To share some tips on [tuning LightGBM models](https://github.com/Microsoft/LightGBM/blob/master/docs/Parameters-Tuning.rst)
-
----
-
-# What is Machine Learning?
-
-* Given some input `\(X\)` and ouptut `\(y\)`, find a function `\(F(X)\)` that maps `\(X\)` to `\(y\)`.
-* Example: given (<span style="color:#CC4455">location, size</span>) (`\(X\)`), predict the <span style="color:#CC4455">price</span> of a house (`\(y\)`).
-
-.center[<img src="img/ml.png" style="width: 75%; margin-top: 2em;" />]
+* The need to **deploy** machine learning models
+* Different kinds of **workflows**
+* Common **strategies**
+* **Options** in Python
+* Other **considerations**
+* NOT about using docker/kubernetes
 
 ---
 
-# Which ML Algorithm Should You Use?
+# The "Kaggle" Way of Machine Learning
 
-- Linear regression, decision trees, random forest, gradient boosting, logistic regression, kNN, naive Bayes, neural networks...
-- For *computer vision* related tasks, *deep learning* are often the most useful. How about other problems with **<span style="color:#3366AA">explicit features</span>**?
-      - E.g: [House Price Prediction](https://www.kaggle.com/c/house-prices-advanced-regression-techniques), [Insurance Claim Prediction](https://www.kaggle.com/c/porto-seguro-safe-driver-prediction), [Production Line Quality Prediction](Production Line)
-- What do the competition winners use?
-      - [Profiling Top Kagglers: Owen Zhang](http://blog.kaggle.com/2015/06/22/profiling-top-kagglers-owen-zhang-currently-1-in-the-world/)
-      - [A Kaggle Master Explains Gradient Boosting](http://blog.kaggle.com/2017/01/23/a-kaggle-master-explains-gradient-boosting/)
+* [Kaggle](https://www.kaggle.com/): a Website that host machine learning competitions
+* You train machine learning models and generate predictions on the testing data
+* Everything is done **offline**
 
----
-
-class: center, middle
-
-<img src="img/algorithms-ranking.png" style="width: 95%" />
-
-Ref: Fig 1. Olson et al. [Data-driven Advice for Applying Machine Learning to Bioinformatics Problems](https://arxiv.org/abs/1708.05070). 2017.
+<center>
+  <img src="img/kaggle.png" width="70%"/>
+</center>
 
 ---
 
-class: center, middle
+# Machine Learning Applications
 
-<img src="img/algorithms-ranking-2.png" style="width: 80%" />
+* In practice, generating predictions is only a **small part** of a machine learning project
+* Consider a system that uses machine learning to recognize hand-written letters
 
-Ref: Fig 2. Olson et al. [Data-driven Advice for Applying Machine Learning to Bioinformatics Problems](https://arxiv.org/abs/1708.05070). 2017.
+<center>
+  <img src="img/ml-system-example.png" width="90%"/>
+</center>
+
+---
+
+# Common ML Systems Workflow
+
+* There are several common **workflows** for machine learning systems
+    1. Train offline ➤ Predict offline ➤ Store predictions in DB
+    2. Train offline ➤ Embed model in a device ➤ Predict online
+    3. Train offline ➤ Make model available as a service ➤ Predict online
+* Notes:
+    - **Offline**<br/>separate from a production system; does not have to be completed in real time
+    - **Online**<br/>part of a production system; perform tasks in real time
+
+---
+
+# Common ML Systems Workflow (1)
+
+* Train offline ➤ Predict offline ➤ Store predictions in DB
+* Example: **Recommender systems**
+    - A model is trained **offline**
+    - For each user, generate (pre-compute) a list of recommended items, store in **database**
+    - When the user visits the Website, return the list of items
+
+<center>
+    <img src="img/amazon-recommendations.png" width="100%"/>
+</center>
+
+
+---
+
+class: equal-split
+
+# Common ML Systems Workflow (2)
+
+.column-left[
+* Train offline ➤ Embed model in a device ➤ Predict online
+* Example: **Object detection using a drone**
+    - A model is trained offline
+    - The model together with other processing logic are downloaded to the drone's computer
+    - The drone detects objects while it is in operation
+]
+.column-right[
+<center>
+    <img src="img/drone-object-detection.png" width="100%"/>
+</center>
+]
+
+---
+
+# Common ML Systems Workflow (3)
+
+* Train offline ➤ Make model available as a service ➤ Predict online
+* Example: **Spam E-mail detection**
+    - A classifier is trained offline with spam and non-span emails
+    - Deployed as a service to serve users or other components in the system
+
+<center>
+    <img src="img/ml-service-example.png" width="85%"/>
+</center>
+
+---
+
+# Common ML Systems Workflow
+
+* In (2) and (3), we need to think about how to **deploy** a machine learning model
+* Definition of **deploy**:
+
+<div class="quote">
+  To place some resources into a position so as to be ready for action or use
+</div>
+
+* In this talk, we will focus on **Use Case (3)**
+* How to make machine learning models **available** to other users/systems?
+
+---
+
+class: equal-split
+
+# Common Strategies
+
+.column-left[
+* **Persist** model in a **standard** format
+* **Different languages** for development and production
+]
+.column-right[
+* Serve models in **micro-services**
+* The **same** language and packages used in development and production
+]
+
+<center>
+  <img src="img/common-strategies.png" width="75%"/>
+</center>
+  
 
 ---
 
 class: split-60
 
-# What is Boosting?
+# Persist Models in a Standard Format
 
 .column-left[
-* In general, [boosting](https://en.wikipedia.org/wiki/Boosting_%28machine_learning%29) is a method that trains a number of relatively **weak** classifiers and **combine** their predictions together, in the hope of generating more accuracy predictions
-* Thus, boosting implies [ensemble learning](https://en.wikipedia.org/wiki/Ensemble_learning)
-* Example: [AdaBoost](https://en.wikipedia.org/wiki/AdaBoost) - in each iteration, previously <span style="color: #4466DD">wrongly</span> classified samples will have <span style="color: #4466DD">higher weights</span> when training the next classifier.
+```python
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn2pmml import sklearn2pmml
+from sklearn2pmml.pipeline import PMMLPipeline
+
+# Load data ...
+
+# Create pipeline and fit model
+pipeline = PMMLPipeline([
+  ("vec", CountVectorizer()),
+  ("clf", LogisticRegression())
+])
+pipeline.fit(X, y)
+
+# Write model in PMML format
+sklearn2pmml(pipeline, "model.pmml", with_repr=True)
+```
 ]
 .column-right[
-<img src="img/boosting.png" width="98%">
-
-(Ref: [Quick Introduction to Boosting Algorithms in Machine Learning](https://www.analyticsvidhya.com/blog/2015/11/quick-introduction-boosting-algorithms-machine-learning/))
+* **Predictive Model Markup Language (PMML)**
+  - XML-based file format for model interchange
+  - scikit-learn to PMML:<br/>[sklearn2pmml](https://github.com/jpmml/sklearn2pmml)
+  - LightGBM to PMML:<br/>[jpmml-lightgbm](https://github.com/jpmml/jpmml-lightgbm)
+* References: [Converting Scikit-Learn to PMML](https://www.slideshare.net/VilluRuusmann/converting-scikitlearn-to-pmml)
 ]
 
 ---
 
-# What is Gradient Boosting?
+# Serve Models in Micro-services
 
-* To train a model is equivalent to finding a suitable function `\(F(X)\)`, such that given input data `\(X\)`, it will output correct predictions `\(y = F(X)\)`
-* Let's assume that we have trained a model `\(F_1(X)\)`, and given training data `\(X_T\)`, it outputs `\(y_p\)`, while the ground truth is `\(y_T\)`
-* In most cases, the model would make some mistakes: `\(y_T - y_p\)`
-* What can we do next to **<span style="color: rgb(22, 113, 155)">improve</span>** our model?
+* Models are persisted in a certain format specific to the language in development<br/>(e.g. using `sklearn.externals.joblib`)
+* The model (or even the module to load, pre-process and generate predictions) is **wrapped** in a **micro-service** that expose **endpoints** to receive requests from **clients**
 
----
-
-# An Example
-
-* Suppose the performance of our first model is as follows:
-
-Rooms  | Size |        Rent | Predicted (`\(F_1(X)\)`) | Error (`\(y_T\)` - `\(F_1(X)\)`)
--------|------|-------------|-----------|-------
-1      |   20 |      12,000 |   13,000  | -1,000
-1      |   30 |      14,000 |   13,500  |    500
-2      |   40 |      16,500 |   15,800  |    700
-3      |   85 |      24,000 |   25,500  | -1,500
-3      |   80 |      26,000 |   25,300  |    700
-
-* We would like to have another model that **corrects** the errors of the first model!
-* In other words, we want `\(F_2(X)\)` = `\(y_T\)` - `\(F_1(X)\)`
+<center>
+    <img src="img/micro-service.png" width="90%"/>
+</center>
 
 ---
 
-# What is Gradient Boosting?
+# Options in Python
 
-* The combination of the 1st and the 2nd model may still make some mistakes
-* We can apply this method repeatedly, until `\(F_1(X) + F_2(X) + ... + F_N(X)\)` is good enough
-* In general, larger `\(N\)` results in more accuracy results, but may also lead to **<span style="color: #CC7733">overfitting</span>**.
-* `\(N\)` is usually referred to as <span style="color: rgb(190, 16, 124)">*number of boosted rounds*</span>, <span style="color: rgb(190, 16, 124)">*number of estimators*</span> or <span style="color: rgb(190, 16, 124)">*number of iterations*</span>.
-
----
-
-# Training Gradient Boosting Models
-
-## A number of libraries available in Python
-
-* scikit-learn's [GradientBoostingClassifier](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html#sklearn.ensemble.GradientBoostingClassifier) / [GradientBoostingRegressor](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html#sklearn.ensemble.GradientBoostingRegressor)
-* [XGBoost](http://xgboost.readthedocs.io/en/latest/)
-* Microsoft's [LightGBM](https://github.com/Microsoft/LightGBM)
-* [h2o](https://github.com/h2oai/h2o-3)
-* Spark MLib's [Gradient-Boosted Trees](https://spark.apache.org/docs/2.1.0/ml-classification-regression.html#gradient-boosted-trees-gbts)
+* XML-RPC
+* HTTP REST micro-services
+    - Flask: [http://flask.pocoo.org/](http://flask.pocoo.org/)
+    - Bottle: [https://bottlepy.org/](https://bottlepy.org/docs/dev/)
+    - Falcon: [https://falconframework.org/](https://falconframework.org/index.html)
+    - Vibora: [https://github.com/vibora-io/vibora](https://github.com/vibora-io/vibora)
+    - AIOHTTP: [https://aiohttp.readthedocs.io/en/stable/](https://aiohttp.readthedocs.io/en/stable/)
+* Asynchronous Messaging
+    - Kafka: [https://kafka.apache.org/](https://kafka.apache.org/)
+    - RabbitMQ: [https://www.rabbitmq.com/](https://www.rabbitmq.com/)
+    - Redis: [https://redis.io/](https://redis.io/)
 
 ---
 
-# Comparison between LightGBM and XGBoost
+# Wrapping Model Prediction in a Class
 
-* XGBoost has been very popular among Kaggle participants
-* However, LightGBM trains model with similar accuracy much faster
-
-Dataset  | xgboost  | xgboost_hist | LightGBM
----------|----------|--------------|----------
-Higgs 	 |  3,794 s | 	 551 s 	   |  238 s
-Yahoo LTR| 	  674 s | 	 265 s 	   |  150 s
-MS LTR 	 |  1,251 s | 	 385 s     |  215 s
-Expo 	 |  1,607 s |    588 s 	   |  138 s
-Allstate | 	2,867 s |  1,355 s 	   |  348 s
-
-* More statistics and comparison can be found at [LightGBM's Experiments page](https://github.com/Microsoft/LightGBM/blob/master/docs/Experiments.rst)
-
----
-
-# LightGBM
-
-* LightGBM ([https://github.com/Microsoft/LightGBM](https://github.com/Microsoft/LightGBM)) - An open source gradient boosting framework created by Microsoft Research.
-* Supports *classification*, *regression* and *ranking* tasks
-* Much more efficient compared to other implements such as [XGboost](https://github.com/dmlc/xgboost) and [scikit-learn](http://scikit-learn.org/stable/modules/classes.html#module-sklearn.ensemble)
-* Support parallel training on **multi-core**, **multi-machine** and **GPUs**
-
----
-
-# Python API Example
+* Generating predictions can involve **pre-processing** and **post-processing**
+* More convenient if everything is wrapped inside a **class**
 
 ```python
-import lightgbm as lgb
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
+class TextClassifier(object):
+    """A Class wrapping the ML model"""
 
-# Assume X, y are the training data set
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=101)
-
-# Create dataset for LightGBM
-lgb_train = lgb.Dataset(X_train, label=y_train)
-lgb_test = lgb.Dataset(X_test, y_test, reference=lgb_train)
-
-# Set parameters
-params = {
-    "objective": "multiclass",
-    "metric": "multi_logloss",
-    "num_leaves": 31
-}
+    def __init__(self):
+        # Load the persisted model into memory
+        self.model = joblib.load("model.pkl")
+    
+    def train(self):
+        # Model training
+        # ...
+    
+    def predict(self, x):
+        y = self.model.predict([x])
+        return y[0]
 ```
 
 ---
 
-# Python API Example
+# Tensorflow Models
+
+* For Tensorflow models, we need to keep a reference to the graph during initialization
 
 ```python
-# Train
-booster = lgb.train(params,
-                    lgb_train,
-                    num_boost_round=100,
-                    valid_sets=[lgb_train, lgb_test],
-                    early_stopping_rounds=10)
+import tensorflow as tf
+from keras.applications.resnet50 import ResNet50
 
-# Check performance on test set
-y_pred = booster.predict(X_test, num_iteration=booster.best_iteration)
-print("Accuracy: %.4f" % accuracy_score(y_test, y_pred))
+class ImageClassifier(object):
 
-# Persist model
-booster.save_model("gbm.model.txt")
+    def __init__(self):
+        self.graph = tf.get_default_graph()
+        self.model = ResNet50(weights='imagenet')
+    
+    def preprocess(self, img):
+        # preprocess the input image
+        # ...
+
+    def predict(self, img):
+        x = self.preprocess(img)
+        with self.graph.as_default():
+            predictions = self.model.predict(x)
+        ...
 ```
 
 ---
-# scikit-learn Style API
+
+class: equal-split
+
+# XML-RPC
+
+* [XML-RPC](https://en.wikipedia.org/wiki/XML-RPC): Remote procedure call based on HTTP and XML file format
+* The most straight-forward way if the **clients are also written in Python**
+
+.column-left[
+* Server
 
 ```python
-import lightgbm as lgb
+from xmlrpc.server import \
+    SimpleXMLRPCServer
+from model import TextClassifier
 
-# Create classifier
-gbm = lgb.LGBMClassifier(objective="multiclass",
-                         num_leaves=31,
-                         n_estimators=100)
+clf = TextClassifer()
 
-# Train
-gbm.fit(X_train, y_train,
-        eval_set=[(X_test, y_test)],
-        eval_metric="multi_logloss",
-        early_stopping_rounds=5)
+address = ("localhost", 8000)
+server = SimpleXMLRPCServer(address)
+server.register_function(
+    clf.predict, "predict")
 
-# Generate predictions
-y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration_)
-```      
+server.serve_forever()
+```
+]
+.column-right[
+* Client
+
+```python
+from xmlrpc.client import ServerProxy
+
+address = ("localhost", 8000)
+
+# Create a proxy to the XML-RPC server
+with ServerProxy(address) as server:
+    server.predict("Hello!")
+```
+]
+
 ---
 
-# LGB: Important Parameters
+# Flask
 
-* <span style="color: rgb(47, 151, 192)">**num_leaves**</span> - Maximum number of leaves in a tree. (10 to 100)
-* <span style="color: rgb(47, 151, 192)">**min_child_samples**</span> - Minimum data points required in a leaf node. (10 to 1000)
-* <span style="color: rgb(47, 151, 192)">**bagging_fraction**</span> - Fraction of samples for training in each round (0 to 1)
-* <span style="color: rgb(47, 151, 192)">**bagging_freq**</span> - How frequent do we use bagging (1 to 10)
-* <span style="color: rgb(47, 151, 192)">**feature_fraction**</span> - Fraction of features for training in each round (0 to 1)
-* <span style="color: rgb(47, 151, 192)">**lambda_l1** / **lambda_l2**</span> - Regularisation parameters (0.01 to 0.1)
-* <span style="color: rgb(47, 151, 192)">**min_split_gain**</span> - When should we split a leave node (0.001 to 0.1)
+* A popular WSGI Web framework for creating HTTP APIs
+
+```python
+from flask import Flask, current_app, request, jsonify
+from model import TextClassifier
+
+app = Flask(__name__)         # Create a Flask app
+app.model = TextClassifier()  # Load model into the app
+
+# Define the HTTP API for prediction
+@app.route('/predict', methods=['POST'])
+def predict():
+    d = request.get_json()
+    prediction = current_app.model.predict(d['x'])
+    return jsonify(result=prediction)
+
+# Start the Flask internal Web server
+app.run()
+```
+
+---
+
+# Deploying
+
+* Flask is a **WSGI** Web Framework, it can be deployed using [Gunicorn](https://gunicorn.org/)
+* Gunicorn uses a **pre-fork worker** model (creates copies of your application)
+* `$ gunicorn app:app -b localhost:8000 -w 4`
+
+<center>
+    <img src="img/gunicorn.png" width="50%"/>
+</center>
+
+---
+
+# Falcon
+
+* A Framework that focuses on REST APIs
+* [Falcon vs. Flask — Which one to pick to create a scalable deep learning REST API](https://medium.com/idealo-tech-blog/falcon-vs-flask-which-one-to-pick-to-create-a-scalable-deep-learning-rest-api-adef647ebdec)
+
+```python
+import falcon
+from model import TextClassifier
+
+class Handler(object):
+
+    def __init__(self):
+        self.model = TextClassifier()
+
+    def on_post(self, req, resp):
+        data = json.loads(req.stream.read())
+        resp.media = {"result": self.model.predict(data['x'])}
+
+app = falcon.API()
+app.add_route('/predict', Handler())
+app.run()
+```
+
+---
+
+# Vibora
+
+* Asynchronous HTTP client/server framework (requires Python 3.6+)
+* API very similar to Flask
+
+```python
+from vibora import Vibora, Request
+from vibora.responses import JsonResponse
+from model import TextClassifier
+
+app = Vibora()  # Create an Vibora application
+app.add_component(TextClassifer())  # Add a globally available component
+
+@app.route('/predict', methods=['POST'])
+async def predict(request: Request):
+    data = await request.json()
+    model = app.get_component(TextClassifier)  # Get reference to the model
+    prediction = model.predict(data['x'])
+    return JsonResponse({"result": prediction})
+```
+
+---
+
+# AIOHTTP
+
+* Framework for implementing Asychronous HTTP client/server on top of `asyncio`
+
+```python
+from aiohttp import web
+from model import TextClassifier
+
+async def handle(request):
+    data = await request.json()
+    prediction = request.app['model'].predict(data['input'])
+    return web.json_response({"result": prediction})
+
+app = web.Application()
+app.router.add_post('/predict', handle)
+app["model"] = TextClassifier()
+
+web.run_app(app, host='localhost', port=8000)
+```
+
+---
+
+class: equal-split
+
+# Comparing Web Frameworks
+
+* Some benchmarking results can be found [here](http://klen.github.io/py-frameworks-bench/) or [here](https://github.com/vibora-io/benchmarks)
+* For ML services, the choice of framework seems not too important, because most of the time will be spent on data **processing** and **inference**
+
+.column-left[
+<center>
+    <img src="img/benchmark.png" width="100%"/>
+    <br/>
+    Simple request and response<br/>
+    http://klen.github.io/py-frameworks-bench/
+</center>
+]
+.column-right[
+<center>
+    <img src="img/vibora-stats.png" width="70%"/>
+    <br/>
+    POST JSON data + Redis API Call<br/>
+    https://github.com/vibora-io/benchmarks
+</center>
+]
+
+---
+
+# Disadvantage of Using HTTP APIs
+
+* HTTP REST APIs are simple to implement, however the process is **synchronous**
+* The client must **wait** until the ML service has finished the process of generating predictions
+* In a complex system involving a lot of components, this may not be efficient
+
+<center>
+    <img src="img/http-round-trip.png" width="65%"/>
+</center>
+
+---
+
+# Asynchronous Messaging
+
+* If components are relatively independent, using **asynchronous messaging** can make more efficient use of the services' resources
+* Send requests and responses to a **message broker** instead of directly to the services
+<br/>
+
+<center>
+    <img src="img/message-broker.png" width="65%"/>
+</center>
+
+* Options:
+    - Redis [https://redis.io/](https://redis.io/)
+    - RabbitMQ: [https://www.rabbitmq.com/](https://www.rabbitmq.com/)
+    - Kafka: [https://kafka.apache.org/](https://kafka.apache.org/)
+
+---
+
+class: equal-split
+
+# Redis
+
+* Redis is a key/value cache, but can also be used as a **message queue**
+
+.column-left[
+* Client Side
+
+```python
+from redis import StrictRedis
+
+# Get a connection to Redis
+queue = StrictRedis(host='localhost',
+                    port=6379)
+
+# Create a message
+message = "Hello!".encode("utf-8")
+
+# Send the message to a channel
+# named "prediction"
+queue.publish("prediction", message)
+```
+]
+.column-right[
+* ML Service
+
+```python
+from redis import StrictRedis
+from model import TextClassifier
+
+queue = StrictRedis(host='localhost',
+                    port=6379)
+pubsub = queue.pubsub()
+pubsub.subscribe('prediction')
+
+while True:
+    x = p.get_message()["data"]
+    y_pred = model.predict(x)
+    # send result back ...
+```
+]
+
+---
+
+class: equal-split
+
+# Kafka
+
+* A scalable and distributed message queue
+* Two Python packages available: [kafka-python](https://github.com/dpkp/kafka-python) and [confluent-kafka](https://github.com/confluentinc/confluent-kafka-python)
+
+.column-left[
+* Producer of messages
+
+```python
+from kafka import KafkaProducer
+
+# Create a message producer
+address = 'localhost:1234'
+producer = KafkaProducer(
+    bootstrap_servers=address)
+
+# Send message to a topic
+producer.send('prediction', # topic
+              '{"x": "Hello!"}') # msg
+...
+```
+]
+.column-right[
+* Consumer of messages
+
+```python
+from kafka import KafkaConsumer
+
+# Create a consumer of a topic
+consumer = KafkaConsumer('prediction')
+
+# Get message from broker:
+for msg in consumer:
+    # Decode message
+    content = msg.value.decode("utf-8")
+    data = json.loads(content)
+    ...
+```
+]
+
+---
+
+# Scaling ML Services
+
+* Nowadays micro-services are usually deployed as [docker containers](https://www.docker.com/) managed using systems such as [Kubernetes](https://kubernetes.io/)
+* **Scaling** involves creating multiple containers, each container running a copy of the ML service
+* Challenge: How to configure **resources allocated to each container**?
+<br/><br/>
+
+<center>
+    <img src="img/docker-deploy.png" width="95%"/>
+</center>
+
+---
+
+# Scaling ML Services
+
+* Some models can benefit from **multiple cores** using multi-threading / multi-processing, e.g.:
+    - scikit-learn's [RandomForestClassifier](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html)
+    - Facebook's [fastText](https://fasttext.cc/)
+    - Deep learning models built using Tensorflow or PyTorch
+* Some models are huge and consume a lot of **RAM**
+* Some models can only run on **single cores**
+* Using GPUs, sometimes **batch processing** can be faster
+
+---
+
+# Single vs. Multiple Workers
+
+* Example: using **Flask** and **Gunicorn** to deploy a Tensorflow model
+* Tensorflow models can utilize **multiple cores** during inference
+* Would be better to scale using multiple containers, each allocated with multiple cores, rather than having multiple workers in a single container
 
 <br/><br/>
-<span style="font-size: 1.2em">
-Reference: [LightGBM - Parameter Tuning](http://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.html)
-</span>
-
----
-
-# Early Stopping
-
-* **Training error** decreases as number of boosting rounds increases
-* But too many boosting rounds may lead to **overfitting**
-* A **<span style="color: rgb(18, 145, 81)">validation data set</span>** can be used to find out the optimal number of boosting rounds
-
-```python
-evals_result = {}  # Use to store the metrics of each round on the validation set
-booster = lgb.train(params,
-                    lgb_train,
-                    num_boost_round=100,
-                    valid_sets=[lgb_train, lgb_test],
-                    evals_result=evals_result,
-                    early_stopping_rounds=10)
-```
-
----
-
-# Early Stopping - Avoid Overfitting
-
 <center>
-<img src="img/best-iterations.png" width="95%">
+    <img src="img/gunicorn-workers.png" width="80%"/>
 </center>
 
 ---
 
-# Feature Importance
+# Summary
 
-* The **<span style="color: rgb(18, 145, 81)">importance</span>** of each feature can be checked after a model has been trained
-* Check both **`"split"`** and **`"gain"`** importance type to understand how useful is each feature
-
-```python
-# importance_type can be either "gain" (gain achieved by using the feature to split),
-# or "split" (number of times the feature is used to split)
-rank = zip(bst.feature_importance(importance_type="gain"), bst.feature_name())
-rank.sort(reverse=True)
-for score, f in rank[:50]:
-    print("%8.2f  %s" % (score, f))
-
-#  5265.03  ps_car_13
-#  2460.84  ps_ind_05_cat
-#  2427.37  ps_reg_03
-# ...
-```
-
----
-
-<center>
-<img src="img/feature-importance.png" width="70%">
-</center>
-
-```python
-booster = lgb.train(params, train_data, num_boost_round=100)
-lgb.plot_importance(booster)
-```
-
----
-
-# LGB: Parallelisation
-
-* LightGBM supports learning on <span style="color: #4466DD">multi-core</span>, <span style="color: #4466DD">multi-machine</span>, and <span style="color: #4466DD">GPU</span>
-* Check out documentation at [Parallel Learning Guide](https://github.com/Microsoft/LightGBM/blob/master/docs/Parallel-Learning-Guide.rst)
-* Method to install GPU-enabled LightGBM (worked on AWS GPU instance)<br/>
-(Ref: https://github.com/Microsoft/LightGBM/issues/715)
-
-```bash
-$ git clone --recursive https://github.com/Microsoft/LightGBM
-$ cd ./LightGBM
-$ mkdir build; cd build
-
-$ sudo cmake -DUSE_GPU=1 -DOpenCL_LIBRARY=/usr/local/cuda-8.0/lib64/libOpenCL.so \
-    -DOpenCL_INCLUDE_DIR=/usr/local/cuda-8.0/include/ ..
-$ sudo make -j2
-
-$ cd ../python-package; sudo python3 setup.py install --precompile
-```
-
----
-
-# Other Tips
-
-* Use **randomised parameter search** instead of grid search is usually faster in discovering a good set of hyperparameters
-* Optimal hyperparameters largely depends on the **size and distribution** of the dataset, try a wider range of values in parameter search
-* **Combo features** are generally NOT necessary as decision trees can easily pick up combination of feature values
-
----
-
-# References
-
-* Ben Gorman. [A Kaggle Master Explains Gradient Boosting](http://blog.kaggle.com/2017/01/23/a-kaggle-master-explains-gradient-boosting/). 2017
-* Cheng Li. [A Gentle Introduction to Graident Boosting](http://www.ccs.neu.edu/home/vip/teach/MLcourse/4_boosting/slides/gradient_boosting.pdf)
-* Tianqi Chen. [Introduction to Boosted Trees](https://homes.cs.washington.edu/~tqchen/pdf/BoostedTree.pdf)
-* Checko out the [FAQ Section](http://lightgbm.readthedocs.io/en/latest/FAQ.html) of the LightGBM documentation too!
-* [Laurae++ Interactive documentation](https://sites.google.com/view/lauraepp/parameters)
+* When using a model in a **production system**, in addition to the performance<br/>(i.e. accuracy / precision / recall of the model, we need to consider:
+1. **Model Size** ➤ would it be too big to be copied around?
+2. **Memory** ➤ how much memory will it take up after loaded?
+3. **CPU** ➤ how much CPU resources needed to generate a prediction?
+4. **Time to Predict** ➤ time requried to generate a prediction
+5. **Preprocessing** ➤ how complicated are the preprocessing steps?
 
 ---
 
 class: center, middle
 
-## Thank You!
+# Thank You!
 
 ### http://www.albertauyeung.com<br/>albertauyeung@gmail.com
 
-### Slides Avaliable at:<br/> http://talks.albertauyeung.com/pycon2017-gradient-boosting/
+### Slides Avaliable at:<br/> http://talks.albertauyeung.com/pycon2018-deploy-ml-models/
 
 
     </textarea>
@@ -417,7 +621,7 @@ class: center, middle
         // Enable or disable counting of incremental slides in the slide counting
         countIncrementalSlides: true,
 
-        highlightStyle: "zenburn"
+        highlightStyle: "github"
         });
       // Setup MathJax
       MathJax.Hub.Config({
